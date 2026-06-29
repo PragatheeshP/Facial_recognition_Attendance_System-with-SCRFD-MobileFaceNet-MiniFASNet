@@ -74,3 +74,10 @@ class FaceEngine:
                 )
             )
         return results
+    
+    def best_single_face(self, image_bgr: np.ndarray) -> Optional[DetectedFace]:
+            """Used during enrollment, where each capture should contain exactly one face."""
+            faces = self.detect_and_embed(image_bgr)
+            if not faces:
+                return None
+            return max(faces, key=lambda f: f.det_score)
