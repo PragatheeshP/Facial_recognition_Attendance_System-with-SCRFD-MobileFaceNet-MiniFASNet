@@ -53,6 +53,7 @@ MAX_FACE_FILL_RATIO = 0.35
 ENABLE_LIVENESS = True
 
 ANTI_SPOOF_MODEL_DIR = os.path.join(BASE_DIR, "resources", "anti_spoof_models")
+FACE_MODEL_DIR = os.path.join(BASE_DIR, "resources", "face_models")
 ANTI_SPOOF_MODELS = [
     # (filename, crop_scale) — crop_scale controls how much context around
     # the tight face box each model sees; matches the official repo's

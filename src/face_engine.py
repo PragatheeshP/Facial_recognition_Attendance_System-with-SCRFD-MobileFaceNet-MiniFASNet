@@ -1,11 +1,14 @@
 """
-Thin wrapper around InsightFace's lightweight "buffalo_s" model pack.
+Thin wrapper around InsightFace's detection + recognition models, loaded
+directly from local .onnx files in resources/face_models/ instead of
+FaceAnalysis's auto-downloader.
 
-buffalo_s = SCRFD-500MF (face detection, ~2.5MB) + MobileFaceNet
-(512-d face embedding, ~4MB). Both run happily on CPU via ONNXRuntime —
-no CUDA, no multi-hundred-MB ResNet backbones.
-
-First run downloads the pack automatically (~13MB) into ~/.insightface/.
+Why: FaceAnalysis(name="buffalo_s") always downloads the FULL pack zip
+(~124MB, 5 models: detection, recognition, genderage, 2 landmark models)
+even if you only ask it to load 2 of them via allowed_modules — the
+filtering happens AFTER download/extraction, not before. That download
+was what was blowing past Render's 512MB limit at startup. Loading just
+the 2 committed .onnx files we actually use avoids any network call.
 """
 
 from dataclasses import dataclass
@@ -26,43 +29,48 @@ class DetectedFace:
 
 class FaceEngine:
     def __init__(self):
-        # Imported lazily so the rest of the app can be explored/tested
-        # without insightface installed.
-        from insightface.app import FaceAnalysis
+        import os
+        from insightface.model_zoo import get_model
 
-        self._app = FaceAnalysis(
-            name=config.INSIGHTFACE_MODEL_PACK,
-            providers=["CPUExecutionProvider"],
-            allowed_modules=["detection", "recognition"],
-        )
-        self._app.prepare(ctx_id=0, det_size=config.DETECTION_SIZE)
+        det_path = os.path.join(config.FACE_MODEL_DIR, "det_500m.onnx")
+        rec_path = os.path.join(config.FACE_MODEL_DIR, "w600k_mbf.onnx")
+
+        self._det_model = get_model(det_path, providers=["CPUExecutionProvider"])
+        self._det_model.prepare(ctx_id=0, input_size=config.DETECTION_SIZE)
+
+        self._rec_model = get_model(rec_path, providers=["CPUExecutionProvider"])
+        self._rec_model.prepare(ctx_id=0)
 
     def detect_and_embed(self, image_bgr: np.ndarray) -> List[DetectedFace]:
-        """
-        Runs detection + embedding in one pass.
-        image_bgr: numpy array as returned by cv2.imread / cv2 frame capture.
-        """
+        from insightface.utils import face_align
+
         h, w = image_bgr.shape[:2]
         frame_area = h * w
-        faces = self._app.get(image_bgr)
+
+        bboxes, kpss = self._det_model.detect(image_bgr, input_size=config.DETECTION_SIZE)
+
         results = []
-        for face in faces:
-            x1, y1, x2, y2 = face.bbox
+        for i in range(bboxes.shape[0]):
+            x1, y1, x2, y2, det_score = bboxes[i]
+            kps = kpss[i] if kpss is not None else None
+            if kps is None:
+                continue  # can't align/embed without landmarks
+
+            aligned = face_align.norm_crop(
+                image_bgr, landmark=kps, image_size=self._rec_model.input_size[0]
+            )
+            raw_embedding = self._rec_model.get_feat(aligned).flatten()
+            normed_embedding = (raw_embedding / np.linalg.norm(raw_embedding)).astype("float32")
+
             face_area = float((x2 - x1) * (y2 - y1))
             face_area_ratio = face_area / frame_area if frame_area > 0 else 0.0
+
             results.append(
                 DetectedFace(
-                    bbox=face.bbox,
-                    det_score=float(face.det_score),
-                    embedding=face.normed_embedding.astype("float32"),
+                    bbox=np.array([x1, y1, x2, y2], dtype=np.float32),
+                    det_score=float(det_score),
+                    embedding=normed_embedding,
                     face_area_ratio=face_area_ratio,
                 )
             )
         return results
-
-    def best_single_face(self, image_bgr: np.ndarray) -> Optional[DetectedFace]:
-        """Used during enrollment, where each capture should contain exactly one face."""
-        faces = self.detect_and_embed(image_bgr)
-        if not faces:
-            return None
-        return max(faces, key=lambda f: f.det_score)
