@@ -33,6 +33,7 @@ class FaceEngine:
         self._app = FaceAnalysis(
             name=config.INSIGHTFACE_MODEL_PACK,
             providers=["CPUExecutionProvider"],
+            allowed_modules=["detection", "recognition"],
         )
         self._app.prepare(ctx_id=0, det_size=config.DETECTION_SIZE)
 
