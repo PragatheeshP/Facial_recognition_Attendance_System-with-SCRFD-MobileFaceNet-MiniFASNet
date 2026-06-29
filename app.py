@@ -12,6 +12,9 @@ Features preserved from original:
 """
 
 import os
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 import base64
 import io
 import json
@@ -25,7 +28,6 @@ from flask_socketio import SocketIO, emit
 from PIL import Image
 import numpy as np
 import cv2
-import pandas as pd
 
 # Add src to path
 import sys
@@ -360,9 +362,11 @@ def export_csv(session_id):
         if not records:
             return jsonify({"success": False, "error": "No data to export."}), 400
 
-        df = pd.DataFrame(records)
+        import csv
         output = io.StringIO()
-        df.to_csv(output, index=False)
+        writer = csv.DictWriter(output, fieldnames=records[0].keys())
+        writer.writeheader()
+        writer.writerows(records)
         output.seek(0)
 
         return send_file(
