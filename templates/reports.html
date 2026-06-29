@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}Reports - Classroom Attendance{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="bi bi-file-earmark-bar-graph me-2"></i>Session Reports</h2>
+        <p class="text-muted">View attendance records and export data.</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-calendar-check me-2"></i>Select Session
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Session</label>
+                    <select class="form-select" id="session-select">
+                        <option value="">-- Select a session --</option>
+                        {% for s in sessions %}
+                        <option value="{{ s.id }}">
+                            #{{ s.id }} — {{ s.subject or 'Untitled' }} ({{ s.status }})
+                            [{{ s.classroom_id }}]
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button class="btn btn-primary w-100 mb-2" id="btn-load" disabled>
+                    <i class="bi bi-arrow-clockwise me-1"></i>Load Report
+                </button>
+                <button class="btn btn-success w-100" id="btn-export" disabled>
+                    <i class="bi bi-download me-1"></i>Export CSV
+                </button>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header bg-info text-white">
+                <i class="bi bi-info-circle me-2"></i>Session Info
+            </div>
+            <div class="card-body" id="session-info">
+                <p class="text-muted">Select a session to view details.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-table me-2"></i>Attendance Records</span>
+                <span class="badge bg-secondary" id="record-count">0 records</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 600px;">
+                    <table class="table table-hover table-sm mb-0">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>#</th>
+                                <th>Student</th>
+                                <th>Status</th>
+                                <th>Confidence</th>
+                                <th>Marked At</th>
+                                <th>Snapshot</th>
+                                <th>Auto</th>
+                            </tr>
+                        </thead>
+                        <tbody id="records-body">
+                            <tr>
+                                <td colspan="7" class="text-center text-muted py-4">
+                                    Select a session and click "Load Report" to view records.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const sessionSelect = document.getElementById('session-select');
+const btnLoad = document.getElementById('btn-load');
+const btnExport = document.getElementById('btn-export');
+const sessionInfo = document.getElementById('session-info');
+const recordsBody = document.getElementById('records-body');
+const recordCount = document.getElementById('record-count');
+
+// Session data from server
+const sessionsData = {{ sessions | tojson }};
+
+sessionSelect.addEventListener('change', () => {
+    const hasSelection = sessionSelect.value !== '';
+    btnLoad.disabled = !hasSelection;
+    btnExport.disabled = !hasSelection;
+
+    if (hasSelection) {
+        const session = sessionsData.find(s => s.id == sessionSelect.value);
+        if (session) {
+            sessionInfo.innerHTML = `
+                <table class="table table-sm">
+                    <tr><td><strong>ID:</strong></td><td>#${session.id}</td></tr>
+                    <tr><td><strong>Classroom:</strong></td><td>${session.classroom_id}</td></tr>
+                    <tr><td><strong>Subject:</strong></td><td>${session.subject || 'N/A'}</td></tr>
+                    <tr><td><strong>Faculty:</strong></td><td>${session.faculty || 'N/A'}</td></tr>
+                    <tr><td><strong>Started:</strong></td><td>${new Date(session.started_at).toLocaleString()}</td></tr>
+                    <tr><td><strong>Status:</strong></td><td><span class="badge bg-${session.status === 'ACTIVE' ? 'success' : 'secondary'}">${session.status}</span></td></tr>
+                </table>
+            `;
+        }
+    } else {
+        sessionInfo.innerHTML = '<p class="text-muted">Select a session to view details.</p>';
+    }
+});
+
+btnLoad.addEventListener('click', async () => {
+    const sessionId = sessionSelect.value;
+    if (!sessionId) return;
+
+    btnLoad.disabled = true;
+    btnLoad.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Loading...';
+
+    try {
+        const response = await fetch(`/api/session/${sessionId}/attendance`);
+        const records = await response.json();
+
+        recordsBody.innerHTML = '';
+        recordCount.textContent = `${records.length} records`;
+
+        if (records.length === 0) {
+            recordsBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">No attendance records found.</td>
+                </tr>
+            `;
+            return;
+        }
+
+        records.forEach((r, i) => {
+            const statusBadge = {
+                'PRESENT': 'bg-success',
+                'ALREADY_MARKED': 'bg-warning text-dark',
+                'UNRECOGNIZED': 'bg-danger',
+                'SPOOF_REJECTED': 'bg-dark',
+                'TOO_CLOSE': 'bg-info text-dark',
+                'LEFT': 'bg-secondary'
+            }[r.status] || 'bg-light text-dark';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${i + 1}</td>
+                <td>${r.student}</td>
+                <td><span class="badge ${statusBadge}">${r.status}</span></td>
+                <td>${r.confidence !== null ? r.confidence.toFixed(3) : '-'}</td>
+                <td>${r.marked_at ? new Date(r.marked_at).toLocaleString() : '-'}</td>
+                <td>${r.snapshot || '-'}</td>
+                <td>${r.auto ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-muted"></i>'}</td>
+            `;
+            recordsBody.appendChild(tr);
+        });
+    } catch (err) {
+        recordsBody.innerHTML = `
+            <tr>
+                <td colspan="7" class="text-center text-danger py-4">Error loading records: ${err.message}</td>
+            </tr>
+        `;
+    } finally {
+        btnLoad.disabled = false;
+        btnLoad.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Load Report';
+    }
+});
+
+btnExport.addEventListener('click', () => {
+    const sessionId = sessionSelect.value;
+    if (!sessionId) return;
+    window.location.href = `/api/session/${sessionId}/export`;
+});
+</script>
+{% endblock %}

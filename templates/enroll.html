@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+
+{% block title %}Enroll Student - Classroom Attendance{% endblock %}
+
+{% block extra_css %}
+<style>
+.camera-container {
+    position: relative;
+    background: #1a1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 400px;
+}
+.camera-container video {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.camera-container .camera-placeholder {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    text-align: center;
+}
+.capture-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+.capture-grid img {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 2px solid #dee2e6;
+}
+.enroll-form {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="bi bi-person-plus me-2"></i>Enroll New Student</h2>
+        <p class="text-muted">Capture {{ num_required }} photos from different angles for best recognition accuracy.</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Left: Camera & Capture -->
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-camera me-2"></i>Camera</span>
+                <span class="badge bg-secondary" id="capture-counter">Captured: 0 / {{ num_required }}</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="camera-container" id="camera-container">
+                    <video id="video" autoplay playsinline style="display: none;"></video>
+                    <canvas id="canvas" style="display: none;"></canvas>
+                    <div class="camera-placeholder" id="camera-placeholder">
+                        <i class="bi bi-camera-video display-1"></i>
+                        <p class="mt-3">Click "Start Camera" to begin</p>
+                    </div>
+                </div>
+
+                <div class="p-3">
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button class="btn btn-primary" id="btn-start">
+                            <i class="bi bi-camera-video me-1"></i>Start Camera
+                        </button>
+                        <button class="btn btn-success" id="btn-capture" disabled>
+                            <i class="bi bi-camera me-1"></i>Capture
+                        </button>
+                        <button class="btn btn-danger" id="btn-stop" disabled>
+                            <i class="bi bi-stop-circle me-1"></i>Stop
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Captured Images Preview -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <i class="bi bi-images me-2"></i>Captured Photos
+                <button class="btn btn-sm btn-outline-danger float-end" id="btn-reset">
+                    <i class="bi bi-trash me-1"></i>Reset All
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="capture-grid" id="capture-grid">
+                    <p class="text-muted text-center w-100" id="no-captures">No photos captured yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Form & Student List -->
+    <div class="col-lg-5">
+        <div class="enroll-form mb-4">
+            <h5><i class="bi bi-person-vcard me-2"></i>Student Details</h5>
+            <form id="enroll-form">
+                <div class="mb-3">
+                    <label class="form-label">Student ID / Code *</label>
+                    <input type="text" class="form-control" id="student-code" required 
+                           placeholder="e.g., STU001">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Full Name *</label>
+                    <input type="text" class="form-control" id="student-name" required 
+                           placeholder="e.g., John Doe">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Class / Section</label>
+                    <input type="text" class="form-control" id="student-class" 
+                           placeholder="e.g., CS-101">
+                </div>
+                <button type="submit" class="btn btn-success w-100" id="btn-enroll" disabled>
+                    <i class="bi bi-check-circle me-1"></i>Enroll Student
+                </button>
+            </form>
+        </div>
+
+        <!-- Enrolled Students Table -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-people me-2"></i>Enrolled Students
+                <span class="badge bg-primary float-end">{{ students|length }}</span>
+            </div>
+            <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Class</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in students %}
+                        <tr>
+                            <td>{{ s.id }}</td>
+                            <td>{{ s.student_code }}</td>
+                            <td>{{ s.name }}</td>
+                            <td>{{ s.class_id or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">No students enrolled yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Result Modal -->
+<div class="modal fade" id="result-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-title">Result</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modal-body">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Enrollment page camera logic
+let stream = null;
+let capturedImages = [];
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const captureGrid = document.getElementById('capture-grid');
+const noCapturesMsg = document.getElementById('no-captures');
+const counterBadge = document.getElementById('capture-counter');
+const enrollBtn = document.getElementById('btn-enroll');
+
+const requiredPhotos = {{ num_required }};
+
+// Start camera
+document.getElementById('btn-start').addEventListener('click', async () => {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 640, height: 480, facingMode: 'user' } 
+        });
+        video.srcObject = stream;
+        video.style.display = 'block';
+        document.getElementById('camera-placeholder').style.display = 'none';
+        document.getElementById('btn-start').disabled = true;
+        document.getElementById('btn-capture').disabled = false;
+        document.getElementById('btn-stop').disabled = false;
+    } catch (err) {
+        showModal('Camera Error', 'Could not access camera: ' + err.message);
+    }
+});
+
+// Stop camera
+document.getElementById('btn-stop').addEventListener('click', () => {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+    video.style.display = 'none';
+    document.getElementById('camera-placeholder').style.display = 'block';
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('btn-capture').disabled = true;
+    document.getElementById('btn-stop').disabled = true;
+});
+
+// Capture photo
+document.getElementById('btn-capture').addEventListener('click', () => {
+    if (!stream) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+
+    const dataUrl = canvas.toDataURL('image/png');
+    capturedImages.push(dataUrl);
+
+    updateCaptureGrid();
+    updateCounter();
+});
+
+// Reset captures
+document.getElementById('btn-reset').addEventListener('click', () => {
+    capturedImages = [];
+    updateCaptureGrid();
+    updateCounter();
+});
+
+function updateCaptureGrid() {
+    if (capturedImages.length === 0) {
+        captureGrid.innerHTML = '<p class="text-muted text-center w-100" id="no-captures">No photos captured yet.</p>';
+        return;
+    }
+
+    captureGrid.innerHTML = '';
+    capturedImages.forEach((img, idx) => {
+        const div = document.createElement('div');
+        div.style.position = 'relative';
+        div.innerHTML = `
+            <img src="${img}" alt="Capture ${idx + 1}">
+            <button class="btn btn-sm btn-danger" style="position: absolute; top: 5px; right: 5px; padding: 2px 6px;"
+                    onclick="removeCapture(${idx})">
+                <i class="bi bi-x"></i>
+            </button>
+            <span class="badge bg-dark" style="position: absolute; bottom: 5px; left: 5px;">${idx + 1}</span>
+        `;
+        captureGrid.appendChild(div);
+    });
+}
+
+function removeCapture(index) {
+    capturedImages.splice(index, 1);
+    updateCaptureGrid();
+    updateCounter();
+}
+
+function updateCounter() {
+    counterBadge.textContent = `Captured: ${capturedImages.length} / ${requiredPhotos}`;
+    enrollBtn.disabled = capturedImages.length < 3;
+}
+
+// Enroll form submission
+document.getElementById('enroll-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const code = document.getElementById('student-code').value.trim();
+    const name = document.getElementById('student-name').value.trim();
+    const classId = document.getElementById('student-class').value.trim();
+
+    if (!code || !name) {
+        showModal('Error', 'Student code and name are required.');
+        return;
+    }
+
+    if (capturedImages.length < 3) {
+        showModal('Error', 'Need at least 3 photos. Please capture more.');
+        return;
+    }
+
+    enrollBtn.disabled = true;
+    enrollBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Enrolling...';
+
+    try {
+        const response = await fetch('/api/enroll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_code: code,
+                name: name,
+                class_id: classId,
+                images: capturedImages
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showModal('Success', result.message);
+            // Reset form
+            document.getElementById('enroll-form').reset();
+            capturedImages = [];
+            updateCaptureGrid();
+            updateCounter();
+            // Reload page to show updated student list
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showModal('Error', result.error || 'Enrollment failed.');
+        }
+    } catch (err) {
+        showModal('Error', 'Network error: ' + err.message);
+    } finally {
+        enrollBtn.disabled = false;
+        enrollBtn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Enroll Student';
+    }
+});
+
+function showModal(title, message) {
+    // Close any open modals first to prevent backdrop stacking
+    document.querySelectorAll('.modal.show').forEach(el => {
+        const existingModal = bootstrap.Modal.getInstance(el);
+        if (existingModal) existingModal.hide();
+    });
+
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').textContent = message;
+
+    // Clean up any leftover backdrops
+    document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+
+    const modal = new bootstrap.Modal(document.getElementById('result-modal'));
+    modal.show();
+}
+</script>
+{% endblock %}
