@@ -68,6 +68,37 @@ class AttendanceService:
         finally:
             db.close()
 
+    def delete_student(self, student_id: int) -> str:
+        """
+        Permanently deletes a student: removes the enrollment row, every
+        attendance record tied to them (across all past sessions), and
+        their face embedding from the FAISS index so they can no longer
+        be matched during recognition.
+        """
+        db = get_db()
+        try:
+            student = db.get(Student, student_id)
+            if student is None:
+                raise ValueError(f"Student #{student_id} not found.")
+            name, code = student.name, student.student_code
+
+            deleted_records = (
+                db.query(AttendanceRecord)
+                .filter(AttendanceRecord.student_id == student_id)
+                .delete(synchronize_session=False)
+            )
+            db.delete(student)
+            db.commit()
+        finally:
+            db.close()
+
+        # Remove the face embedding outside the DB transaction — if this
+        # were to fail, the student is still gone from the roster, which is
+        # the more important guarantee.
+        self.vector_store.remove(student_id)
+
+        return f"Deleted {name} ({code}) and {deleted_records} attendance record(s)."
+
     # ---------- Sessions ----------
 
     def start_session(self, classroom_id: str, subject: str, faculty: str) -> int:
@@ -89,6 +120,30 @@ class AttendanceService:
                 session.status = "COMPLETED"
                 session.ended_at = datetime.now(timezone.utc)
                 db.commit()
+        finally:
+            db.close()
+
+    def delete_session(self, session_id: int) -> str:
+        """
+        Permanently deletes a session and every attendance record tied to
+        it. Does not touch student enrollment data.
+        """
+        db = get_db()
+        try:
+            session_obj = db.get(ClassSession, session_id)
+            if session_obj is None:
+                raise ValueError(f"Session #{session_id} not found.")
+            label = f"#{session_id} ({session_obj.subject or 'Untitled'})"
+
+            deleted_records = (
+                db.query(AttendanceRecord)
+                .filter(AttendanceRecord.session_id == session_id)
+                .delete(synchronize_session=False)
+            )
+            db.delete(session_obj)
+            db.commit()
+
+            return f"Deleted session {label} and {deleted_records} attendance record(s)."
         finally:
             db.close()
 

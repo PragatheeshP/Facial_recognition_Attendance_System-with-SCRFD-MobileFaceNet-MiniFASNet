@@ -196,10 +196,14 @@ def enroll_student():
 
 @app.route('/api/student/<int:student_id>', methods=['DELETE'])
 def delete_student(student_id):
-    """Delete a student (optional feature)."""
-    # Note: This would need to be added to AttendanceService
-    # For now, return not implemented
-    return jsonify({"success": False, "error": "Delete not implemented in this version."}), 501
+    """Delete a student, their attendance history, and their face embedding."""
+    try:
+        msg = service.delete_student(student_id)
+        return jsonify({"success": True, "message": msg})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +259,23 @@ def get_session(session_id):
     if session_data:
         return jsonify(session_data)
     return jsonify({"error": "Session not found"}), 404
+
+
+@app.route('/api/session/<int:session_id>', methods=['DELETE'])
+def delete_session(session_id):
+    """Delete a session and all of its attendance records."""
+    try:
+        # Cancel any pending periodic-check timer for this session first
+        if session_id in active_timers:
+            active_timers[session_id].cancel()
+            del active_timers[session_id]
+
+        msg = service.delete_session(session_id)
+        return jsonify({"success": True, "message": msg})
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ---------------------------------------------------------------------------

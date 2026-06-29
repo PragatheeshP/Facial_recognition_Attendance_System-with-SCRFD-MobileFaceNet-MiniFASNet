@@ -32,8 +32,11 @@
                 <button class="btn btn-primary w-100 mb-2" id="btn-load" disabled>
                     <i class="bi bi-arrow-clockwise me-1"></i>Load Report
                 </button>
-                <button class="btn btn-success w-100" id="btn-export" disabled>
+                <button class="btn btn-success w-100 mb-2" id="btn-export" disabled>
                     <i class="bi bi-download me-1"></i>Export CSV
+                </button>
+                <button class="btn btn-outline-danger w-100" id="btn-delete-session" disabled>
+                    <i class="bi bi-trash me-1"></i>Delete Session
                 </button>
             </div>
         </div>
@@ -88,6 +91,7 @@
 const sessionSelect = document.getElementById('session-select');
 const btnLoad = document.getElementById('btn-load');
 const btnExport = document.getElementById('btn-export');
+const btnDeleteSession = document.getElementById('btn-delete-session');
 const sessionInfo = document.getElementById('session-info');
 const recordsBody = document.getElementById('records-body');
 const recordCount = document.getElementById('record-count');
@@ -99,6 +103,7 @@ sessionSelect.addEventListener('change', () => {
     const hasSelection = sessionSelect.value !== '';
     btnLoad.disabled = !hasSelection;
     btnExport.disabled = !hasSelection;
+    btnDeleteSession.disabled = !hasSelection;
 
     if (hasSelection) {
         const session = sessionsData.find(s => s.id == sessionSelect.value);
@@ -180,6 +185,55 @@ btnExport.addEventListener('click', () => {
     const sessionId = sessionSelect.value;
     if (!sessionId) return;
     window.location.href = `/api/session/${sessionId}/export`;
+});
+
+btnDeleteSession.addEventListener('click', async () => {
+    const sessionId = sessionSelect.value;
+    if (!sessionId) return;
+
+    const sessionMeta = sessionsData.find(s => s.id == sessionId);
+    const label = sessionMeta ? `#${sessionMeta.id} (${sessionMeta.subject || 'Untitled'})` : `#${sessionId}`;
+
+    if (!confirm(`Delete session ${label}? This permanently removes the session and all of its attendance records. This cannot be undone.`)) {
+        return;
+    }
+
+    btnDeleteSession.disabled = true;
+    btnDeleteSession.innerHTML = '<i class="bi bi-hourglass-split me-1"></i>Deleting...';
+
+    try {
+        const response = await fetch(`/api/session/${sessionId}`, { method: 'DELETE' });
+        const result = await response.json();
+
+        if (result.success) {
+            // Remove from the dropdown and cached session data
+            const option = sessionSelect.querySelector(`option[value="${sessionId}"]`);
+            if (option) option.remove();
+            const idx = sessionsData.findIndex(s => s.id == sessionId);
+            if (idx !== -1) sessionsData.splice(idx, 1);
+
+            // Reset the right-hand panels
+            sessionSelect.value = '';
+            btnLoad.disabled = true;
+            btnExport.disabled = true;
+            sessionInfo.innerHTML = '<p class="text-muted">Select a session to view details.</p>';
+            recordsBody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">
+                        Select a session and click "Load Report" to view records.
+                    </td>
+                </tr>
+            `;
+            recordCount.textContent = '0 records';
+        } else {
+            alert(result.error || 'Failed to delete session.');
+        }
+    } catch (err) {
+        alert('Network error: ' + err.message);
+    } finally {
+        btnDeleteSession.disabled = sessionSelect.value === '';
+        btnDeleteSession.innerHTML = '<i class="bi bi-trash me-1"></i>Delete Session';
+    }
 });
 </script>
 {% endblock %}

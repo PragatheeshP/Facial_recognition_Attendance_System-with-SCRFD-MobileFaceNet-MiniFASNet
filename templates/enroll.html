@@ -133,7 +133,7 @@
         <div class="card">
             <div class="card-header">
                 <i class="bi bi-people me-2"></i>Enrolled Students
-                <span class="badge bg-primary float-end">{{ students|length }}</span>
+                <span class="badge bg-primary float-end" id="student-count-badge">{{ students|length }}</span>
             </div>
             <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
                 <table class="table table-hover table-sm mb-0">
@@ -143,19 +143,25 @@
                             <th>Code</th>
                             <th>Name</th>
                             <th>Class</th>
+                            <th></th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="students-table-body">
                         {% for s in students %}
-                        <tr>
+                        <tr data-student-id="{{ s.id }}" data-student-name="{{ s.name }}">
                             <td>{{ s.id }}</td>
                             <td>{{ s.student_code }}</td>
                             <td>{{ s.name }}</td>
                             <td>{{ s.class_id or '-' }}</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-danger btn-delete-student" title="Delete student">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
                         </tr>
                         {% else %}
-                        <tr>
-                            <td colspan="4" class="text-center text-muted py-3">No students enrolled yet.</td>
+                        <tr id="no-students-row">
+                            <td colspan="5" class="text-center text-muted py-3">No students enrolled yet.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -357,5 +363,48 @@ function showModal(title, message) {
     const modal = new bootstrap.Modal(document.getElementById('result-modal'));
     modal.show();
 }
+
+// ---- Delete student ----
+const studentsTableBody = document.getElementById('students-table-body');
+const studentCountBadge = document.getElementById('student-count-badge');
+
+studentsTableBody.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.btn-delete-student');
+    if (!btn) return;
+
+    const row = btn.closest('tr');
+    const studentId = row.dataset.studentId;
+    const studentName = row.dataset.studentName;
+
+    if (!confirm(`Delete ${studentName}? This permanently removes their enrollment, face data, and all attendance history. This cannot be undone.`)) {
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+
+    try {
+        const response = await fetch(`/api/student/${studentId}`, { method: 'DELETE' });
+        const result = await response.json();
+
+        if (result.success) {
+            row.remove();
+            const remaining = studentsTableBody.querySelectorAll('tr[data-student-id]').length;
+            studentCountBadge.textContent = remaining;
+            if (remaining === 0) {
+                studentsTableBody.innerHTML =
+                    '<tr id="no-students-row"><td colspan="5" class="text-center text-muted py-3">No students enrolled yet.</td></tr>';
+            }
+        } else {
+            showModal('Error', result.error || 'Failed to delete student.');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-trash"></i>';
+        }
+    } catch (err) {
+        showModal('Error', 'Network error: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-trash"></i>';
+    }
+});
 </script>
 {% endblock %}

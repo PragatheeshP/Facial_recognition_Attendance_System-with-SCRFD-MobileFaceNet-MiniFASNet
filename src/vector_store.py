@@ -32,6 +32,12 @@ class VectorStore:
         self._index.add_with_ids(embedding.reshape(1, -1), ids)
         self._save()
 
+    def remove(self, student_id: int):
+        """Removes a student's reference embedding from the index, if present."""
+        ids = np.array([student_id], dtype="int64")
+        self._index.remove_ids(ids)
+        self._save()
+
     def search(self, embedding: np.ndarray, top_k: int = 1) -> List[Tuple[int, float]]:
         """Returns [(student_id, cosine_similarity), ...] sorted best-first."""
         if self._index.ntotal == 0:
